@@ -1,0 +1,65 @@
+from scipy.optimize import least_squares
+
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+font_path = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'
+font_name = fm.FontProperties(fname=font_path).get_name()
+
+plt.rc('font', family=font_name)
+
+plt.rcParams['axes.unicode_minus'] = False
+
+
+# 1. Error minimization algorithm (Fixed initial value, changing rotational inertia only)
+
+def objective_function(params):
+    Ix_test, Iy_test = params[0], params[1]
+
+    # fix initial value
+    w0_fixed = [w1_data[0], w2_data[0], w3_data[0]]
+
+    sol = solve_ivp(euler_eqs, [t_data[0], t_data[-1]], w0_fixed, t_eval=t_data, args=(Ix_test, Iy_test), method='RK45')
+
+    if not sol.success or len(sol.t) != len(t_data):
+        return np.ones(len(t_data) * 3) * 1e6
+
+    return np.concatenate((sol.y[0] - w1_data, sol.y[1] - w2_data, sol.y[2] - w3_data))
+
+print("The initial speed is fixed, and only two of the phone's real rotational inertia are precisely obtained")
+
+# set an estimated initial value
+initial_params = [Ix_theo, Iy_theo]
+
+res = least_squares(objective_function, initial_params, bounds=([0.05, 0.05], [1.5, 1.5]))
+
+Ix_opt, Iy_opt = res.x[0], res.x[1]
+w0_fixed = [w1_data[0], w2_data[0], w3_data[0]]
+
+print(f"Optimization completed! real rotational enertia -> Ix(intermediate axis): {Ix_opt:.3f}, Iy(longer axis): {Iy_opt:.3f}")
+
+
+# 2. Calibrated Simulation Calculation
+
+sol_opt = solve_ivp(euler_eqs, [t_data[0], t_data[-1]], w0_fixed, t_eval=t_data, args=(Ix_opt, Iy_opt), method='RK45')
+
+
+# 3. print graph
+
+plt.figure(figsize=(12, 7))
+
+plt.plot(t_data, w2_data, 'r--', alpha=0.5, linewidth=2, label='experimental y-axis (longer axis)')
+plt.plot(t_data, w1_data, 'g--', alpha=0.5, linewidth=2, label='experimental x-axis (intermediate axis)')
+plt.plot(t_data, w3_data, 'b--', alpha=0.5, linewidth=2, label='experimental z-axis (shorter axis)')
+
+plt.plot(t_data, sol_opt.y[1], 'r-', linewidth=3, label='revised y-axis')
+plt.plot(t_data, sol_opt.y[0], 'g-', linewidth=3, label='revised x-axis')
+plt.plot(t_data, sol_opt.y[2], 'b-', linewidth=3, label='revised z-axis')
+
+plt.title('Dzhanibekov effect: revised by changing rotational enertia', fontsize=16)
+plt.xlabel('elapsed time(sec)', fontsize=13)
+plt.ylabel('angular speed (rad/s)', fontsize=13)
+plt.legend(ncol=2)
+plt.grid(True, alpha=0.5)
+plt.tight_layout()
+plt.show()
