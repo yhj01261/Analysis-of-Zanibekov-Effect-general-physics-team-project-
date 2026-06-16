@@ -1,0 +1,73 @@
+# y-axis (smallest rotational inertia)
+import pandas as pd
+import numpy as np
+from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+
+# 1. data setup
+
+file_path = 'Gyroscope rotation rate (1).xls'
+df = pd.read_excel(file_path)
+
+time_exp = df.iloc[:, 0].values
+wx_exp = df.iloc[:, 1].values
+wy_exp = df.iloc[:, 2].values
+wz_exp = df.iloc[:, 3].values
+
+my_t0 = 0.83 # start time
+duration = 0.3 # duration of flight
+
+# cutting data time
+start_idx = np.argmin(np.abs(time_exp - my_t0))
+t0 = time_exp[start_idx]
+mask = (time_exp >= t0) & (time_exp <= t0 + duration)
+
+# 0Adjust time to start from 0 second
+t_data = time_exp[mask] - t0
+
+# right-handed coordinate system
+w1_data = wx_exp[mask]  # x-axis
+w2_data = wy_exp[mask]  # y-axis
+w3_data = wz_exp[mask]  # z-axis
+
+
+# 2. moment of inertia (theoretical)
+
+Ix_theo = 0.817
+Iy_theo = 0.188
+Iz_theo = 1.0
+
+def euler_eqs(t, w, Ix, Iy):
+    wx, wy, wz = w
+    dwx = ((Iy - Iz_theo) / Ix) * wy * wz
+    dwy = ((Iz_theo - Ix) / Iy) * wz * wx
+    dwz = ((Ix - Iy) / Iz_theo) * wx * wy
+    return [dwx, dwy, dwz]
+
+w0_theo = [w1_data[0], w2_data[0], w3_data[0]]
+sol_theo = solve_ivp(euler_eqs, [t_data[0], t_data[-1]], w0_theo, t_eval=t_data, args=(Ix_theo, Iy_theo), method='RK45')
+
+
+# 3. print graph
+
+plt.figure(figsize=(12, 7))
+
+# experimental data
+plt.plot(t_data, w2_data, 'r--', alpha=0.5, linewidth=2, label='experimental y-axis (longer axis)')
+plt.plot(t_data, w1_data, 'g--', alpha=0.5, linewidth=2, label='experimental x-axis (intermediate axis)')
+plt.plot(t_data, w3_data, 'b--', alpha=0.5, linewidth=2, label='experimental z-axis (shorter axis)')
+
+# theoretical data
+plt.plot(t_data, sol_theo.y[1], 'r-', linewidth=3, label='theoretical y-axis')
+plt.plot(t_data, sol_theo.y[0], 'g-', linewidth=3, label='theoretical x-axis')
+plt.plot(t_data, sol_theo.y[2], 'b-', linewidth=3, label='theoretical z-axis')
+
+plt.title('Dzhanibekov effect: theoretical value VS experimental value', fontsize=16, fontweight='bold')
+plt.xlabel('elapsed time (sec)', fontsize=13)
+plt.ylabel('angular speed (rad/s)', fontsize=13)
+plt.legend(ncol=2)
+plt.grid(True, alpha=0.5)
+plt.tight_layout()
+plt.show()
